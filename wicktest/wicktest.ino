@@ -5,7 +5,7 @@
 #define BARREL_LED_PIN  11
 #define NUM_WICK_LEDS   60
 #define NUM_BARREL_LEDS 60
-#define BRIGHTNESS      50
+#define BRIGHTNESS      100
 #define LED_TYPE        WS2811
 #define COLOR_ORDER     GRB
 CRGB wickLeds[NUM_WICK_LEDS];
@@ -19,6 +19,8 @@ static bool motionState = false;
 
 #define INTERNAL_LED_PIN 13
 
+#define SMOKE_MACHINE_PIN 12
+
 #define AUDIO_RX_PIN 6  // Arduino Pin connected to the TX of the Serial MP3 Player module
 #define AUDIO_TX_PIN 7  // Arduino Pin connected to the RX of the Serial MP3 Player module
 #define CMD_SEL_DEV 0x09
@@ -29,6 +31,9 @@ SoftwareSerial mp3(AUDIO_RX_PIN, AUDIO_TX_PIN);
 
 void setup() {
     delay( 3000 ); // power-up safety delay
+
+    pinMode(SMOKE_MACHINE_PIN, OUTPUT);
+    digitalWrite(SMOKE_MACHINE_PIN, LOW);
 
     // LED Setup
     FastLED.addLeds<LED_TYPE, WICK_LED_PIN, COLOR_ORDER>(wickLeds, NUM_WICK_LEDS).setCorrection( TypicalLEDStrip );
@@ -43,7 +48,7 @@ void setup() {
     Serial.begin(9600);
     mp3.begin(9600);
     delay(500);  // wait chip initialization is complete
-    mp3_command(CMD_SEL_DEV, DEV_TF);  // select the TF card
+    mp3_command(CMD_SEL_DEV, DEV_TF);  // select the TF card    
 
     clearWickLEDsUpToIndex(NUM_WICK_LEDS);
 
@@ -63,7 +68,7 @@ void loop()
     long currentTime = millis();
     static long timeOfLastRun = -10000;
     long timeDelta = currentTime - timeOfLastRun;
-    static long minTimeBetweenRuns = 1000;
+    static long minTimeBetweenRuns = 12000;
     Serial.print("Motion sensor high. Time since last run: ");
     Serial.print(timeDelta);
     Serial.print("\n");
@@ -73,21 +78,28 @@ void loop()
       // Kick off sound
       mp3_command(CMD_PLAY, 0x0000);
       Serial.print("Played sound\n");
+      
+      // Smoke on!
+      smokeOn();
+
       // Light wick
       lightWick();
       Serial.print("Wick Done\n");
-      // Smoke!
-      // TODO: smokeOn();
+
+      // Stop smokin'
+      smokeOff();   
 
       // Delay for synchronization 
-      FastLED.delay(750);
+      FastLED.delay(400); 
+
       // Flash barrel
       flashBarrel();
+      
       // Turn off wick
       clearWickLEDsUpToIndex(NUM_WICK_LEDS);
+      
       // Fade barrel:
-      fadeBarrel();
-      // TODO: smokeOff();      
+      fadeBarrel();  
 
       timeOfLastRun = millis();
       Serial.print("Run complete at ");
@@ -112,32 +124,25 @@ void loop()
 // How many MS between wick flickers
 static const int wickFlickerSpeedMS = 1000 / UPDATES_PER_SECOND;
 // Amount of time between the wick "burning down" in ms
-static const int wickMovementDelayMS = 500;
-static const int flickerIterations = wickMovementDelayMS / flickerUpdateDelayMS;
+static const int wickMovementDelayMS = 250;
+static const int flickerIterations = wickMovementDelayMS / wickFlickerSpeedMS;
 void lightWick() {
     uint8_t wickLength = 10;
     int lastWickTick = -1; // start at a time we can't match
     uint8_t wickIndex = wickLength-1;
 
     while (1) {
-        // Current "wick tick" is the milliseconds from launch div by how often we care to move the wick, mod a reasonable number so we don't overflow.
-        int wickTick = (millis() / wickMovementDelayMS) % 1000;
-        
-        // Progress wick index once per time chunk
-        if (wickTick != lastWickTick) {
-            lastWickTick = wickTick;   
-            wickIndex = wickIndex - 1;
-            // Serial.print("Decrementing wick index\n");  
-        }
-
         // Serial.print("Flickering at index ");
         // Serial.print(wickIndex);
         // Serial.print("\n");
-        flickerWickStartingAtIndex(wickIndex, wickLength);        
+        flickerWickStartingAtIndex(wickIndex, wickLength); 
 
         if (wickIndex == 0) {
+          
           break;
         }
+
+        wickIndex = wickIndex - 1;
     }
 }
 
@@ -155,7 +160,7 @@ void clearWickLEDsUpToIndex(uint8_t idx) {
 
 void flickerWickStartingAtIndex(uint8_t idx, uint8_t wickLength) {
 
-    // Clear all wick LEDs, add extra to accomodate for flame height
+    // Clear all wick LEDs up to target index
     clearWickLEDsUpToIndex(idx);
 
     // Set "burnt" wick LEDs to dim red
@@ -164,20 +169,12 @@ void flickerWickStartingAtIndex(uint8_t idx, uint8_t wickLength) {
     }
     
     for (int i = 0; i < flickerIterations; i++) {
-      // Fraction of a second mod 255 to fit into uint8
-      uint8_t quantizedTimestamp = millis() % 128;
-      static uint8_t lastTimestamp = 255;
-
-      if (lastTimestamp != quantizedTimestamp) {
-          lastTimestamp = quantizedTimestamp;
-          if (quantizedTimestamp % 2 == 0) {
-              wickLeds[idx+1].setRGB(145, 88, 0);
-              wickLeds[idx].setRGB(94, 53, 0);
-          } else {
-              wickLeds[idx+1] = CRGB::Black;
-              wickLeds[idx].setRGB(94, 53, 0);
-          }
-          
+      if (i % 2 == 0) {
+          wickLeds[idx+1].setRGB(145, 88, 0);
+          wickLeds[idx].setRGB(94, 53, 0);
+      } else {
+          wickLeds[idx+1] = CRGB::Black;
+          wickLeds[idx].setRGB(94, 53, 0);
       }
       
       FastLED.show();
@@ -203,6 +200,16 @@ void fadeBarrel() {
     Serial.print(step);
     Serial.print("\n");
   }
+}
+
+void smokeOn() {
+  Serial.print("Smoke on!");
+  digitalWrite(SMOKE_MACHINE_PIN, HIGH);
+}
+
+void smokeOff() {
+  Serial.print("Smoke off!");
+  digitalWrite(SMOKE_MACHINE_PIN, LOW);
 }
 
 void mp3_command(int8_t command, int16_t dat) {
