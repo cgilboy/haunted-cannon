@@ -5,7 +5,7 @@
 #define BARREL_LED_PIN  11
 #define NUM_WICK_LEDS   60
 #define NUM_BARREL_LEDS 60
-#define BRIGHTNESS      100
+#define BRIGHTNESS      255
 #define LED_TYPE        WS2811
 #define COLOR_ORDER     GRB
 CRGB wickLeds[NUM_WICK_LEDS];
@@ -68,7 +68,7 @@ void loop()
     long currentTime = millis();
     static long timeOfLastRun = -10000;
     long timeDelta = currentTime - timeOfLastRun;
-    static long minTimeBetweenRuns = 12000;
+    static long minTimeBetweenRuns = 25000;
     Serial.print("Motion sensor high. Time since last run: ");
     Serial.print(timeDelta);
     Serial.print("\n");
@@ -78,21 +78,15 @@ void loop()
       // Kick off sound
       mp3_command(CMD_PLAY, 0x0000);
       Serial.print("Played sound\n");
-      
-      // Smoke on!
-      smokeOn();
 
-      // Light wick
+      // Light wick (smoke turns on part way into wick burning)
       lightWick();
       Serial.print("Wick Done\n");
-
-      // Stop smokin'
-      smokeOff();   
 
       // Delay for synchronization 
       FastLED.delay(400); 
 
-      // Flash barrel
+      // Flash barrel (smoke turns off part way through barrel fading)
       flashBarrel();
       
       // Turn off wick
@@ -136,6 +130,10 @@ void lightWick() {
         // Serial.print(wickIndex);
         // Serial.print("\n");
         flickerWickStartingAtIndex(wickIndex, wickLength); 
+
+        if (wickIndex == 7) {
+          smokeOn();
+        }
 
         if (wickIndex == 0) {
           
@@ -191,6 +189,10 @@ void flashBarrel() {
 
 void fadeBarrel() {
   for (uint8_t step = 0; step < 255; step++) {
+    if (step == 80) {
+      smokeOff();
+    }
+
     for (uint8_t i = 0; i < NUM_BARREL_LEDS; i++) {
       barrelLeds[i].fadeToBlackBy(2);
     }  
